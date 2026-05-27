@@ -1,0 +1,12 @@
+{
+  "domain": "inferencia_presencia",
+  "name": "Transformer Presence Bridge",
+  "version": "1.0.0",
+  "documentation": "https://github.com/GuerraF8/transformer-presence-hacs",
+  "issue_tracker": "https://github.com/GuerraF8/transformer-presence-hacs/issues",
+  "requirements": [],
+  "dependencies": ["frontend", "http"],
+  "codeowners": ["@GuerraF8"],
+  "iot_class": "local_push",
+  "config_flow": true
+}

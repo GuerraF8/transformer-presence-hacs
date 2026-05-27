@@ -1,0 +1,17 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bridge de inferencia de presencia",
+        "description": "Conecta Home Assistant al backend externo de inferencia.",
+        "data": {
+          "inference_api_url": "URL base del backend",
+          "sensor_entities": "Entidades a escuchar (coma separadas, vacio = auto)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "La integracion ya fue configurada."
+    }
+  }
+}

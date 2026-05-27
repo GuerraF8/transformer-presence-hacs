@@ -1,0 +1,114 @@
+emitir_evento_prueba:
+  name: Emitir evento de prueba
+  description: Envia un evento sintetico al backend de inferencia para validar que el bridge y el panel live funcionan.
+  fields:
+    room:
+      name: Habitacion
+      description: Nombre de la habitacion para el evento.
+      required: true
+      selector:
+        text:
+    sensor_type:
+      name: Tipo de sensor
+      description: Tipo de sensor reportado al backend.
+      required: false
+      selector:
+        select:
+          options:
+            - motion
+            - door
+            - occupancy
+            - other
+    state:
+      name: Estado
+      description: Estado del evento.
+      required: false
+      selector:
+        text:
+    entity_id:
+      name: Entity ID
+      description: Entity ID opcional. Si se omite, se genera automaticamente.
+      required: false
+      selector:
+        text:
+    timestamp:
+      name: Timestamp
+      description: Timestamp ISO8601 opcional.
+      required: false
+      selector:
+        text:
+
+iniciar_replay_historico:
+  name: Iniciar replay historico
+  description: Inicia desde Home Assistant un replay completo del CSV historico configurado en inferencia_hub.
+  fields:
+    csv_path:
+      name: Ruta CSV
+      description: Ruta del CSV visible desde el contenedor del backend. Si se omite, usa /data/history-1mes_sorted.csv.
+      required: false
+      selector:
+        text:
+    speed_events_per_second:
+      name: Velocidad
+      description: Eventos por segundo para el replay.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 200
+          mode: box
+    debounce_seconds:
+      name: Debounce
+      description: Debounce aplicado al replay.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 120
+          mode: box
+    include_all_state_transitions:
+      name: Todas las transiciones
+      description: Incluye on/off/unavailable como contexto completo.
+      required: false
+      selector:
+        boolean:
+    max_events:
+      name: Maximo de eventos
+      description: 0 significa replay completo.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1000000
+          mode: box
+
+refrescar_catalogo_sensores:
+  name: Refrescar catalogo de sensores
+  description: Escanea las entidades disponibles en Home Assistant y publica el catalogo al backend de inferencia.
+  fields: {}
+
+crear_sensores_prueba:
+  name: Crear sensores de prueba
+  description: Crea entidades efimeras de prueba en Home Assistant para validar el escaneo, el bridge y la inferencia antes de usar sensores reales.
+  fields:
+    rooms:
+      name: Habitaciones
+      description: Lista de habitaciones separadas por coma.
+      required: false
+      selector:
+        text:
+    include_occupancy:
+      name: Incluir occupancy
+      description: Crea tambien input_boolean de ocupacion por habitacion.
+      required: false
+      selector:
+        boolean:
+    initial_state:
+      name: Estado inicial motion
+      description: Estado inicial para los sensores de movimiento de prueba.
+      required: false
+      selector:
+        select:
+          options:
+            - off
+            - on
