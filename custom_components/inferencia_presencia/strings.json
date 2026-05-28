@@ -7,7 +7,7 @@
         "data": {
           "inference_api_url": "URL interna del backend para Home Assistant",
           "panel_url": "URL publica del panel para el navegador",
-          "sensor_entities": "Entidades a escuchar (coma separadas, vacio = auto)"
+          "sensor_entities": "Entidades disponibles para catalogo (coma separadas, vacio = auto; los eventos solo se envian si el backend las confirma)"
         }
       }
     },

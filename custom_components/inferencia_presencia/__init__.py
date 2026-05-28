@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections import deque
 from datetime import datetime, timezone
 from typing import Any
@@ -190,6 +191,12 @@ def _parse_tracked_entities(raw_value: str) -> set[str]:
     return {item.strip().lower() for item in raw_value.split(",") if item.strip()}
 
 
+def _safe_room_slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9_]+", "_", value.strip().lower().replace(" ", "_"))
+    slug = re.sub(r"_+", "_", slug).strip("_")
+    return slug
+
+
 def _build_url(base_url: str, path: str) -> str:
     base = base_url.rstrip("/") + "/"
     return urljoin(base, path.lstrip("/"))
@@ -311,6 +318,8 @@ class InferenciaPresenciaStatusView(HomeAssistantView):
                     "recent_events": list(runtime["recent_events"]),
                     "sent_events": runtime["sent_events"],
                     "failed_events": runtime["failed_events"],
+                    "enabled_real_entities": sorted(runtime.get("enabled_real_entities", set())),
+                    "last_real_sensor_sync_at": runtime.get("last_real_sensor_sync_at"),
                 }
             )
 
@@ -337,6 +346,60 @@ async def _refresh_catalog_for_all(hass: HomeAssistant, domain_data: dict[str, A
             }
         )
     return results
+
+
+async def _publish_entity_catalog_from_cache(runtime: dict[str, Any], source: str) -> None:
+    entities = runtime.get("available_entities", [])
+    if not isinstance(entities, list) or not entities:
+        return
+    payload = {
+        "source": source,
+        "entry_id": runtime["entry_id"],
+        "scanned_at": runtime.get("last_scan_at") or datetime.now(timezone.utc).isoformat(),
+        "auto_discovery": runtime["auto_discovery"],
+        "tracked_entities": sorted(runtime["tracked_entities"]),
+        "entities": entities,
+    }
+    parsed = await _post_backend_json(runtime, "/api/ha_entities", payload, timeout_seconds=8)
+    runtime["last_backend_response"] = parsed
+    runtime["last_push_at"] = datetime.now(timezone.utc).isoformat()
+
+
+async def _sync_real_sensor_selection(runtime: dict[str, Any]) -> None:
+    payload = await _get_backend_json(runtime, "/api/real_sensor_config", timeout_seconds=8)
+    if not isinstance(payload, dict):
+        return
+    catalog = payload.get("catalog")
+    if (
+        isinstance(catalog, dict)
+        and int(catalog.get("entities_total") or 0) == 0
+        and runtime.get("available_entities_total", 0) > 0
+    ):
+        await _publish_entity_catalog_from_cache(runtime, source="ha_backend_resync")
+        payload = await _get_backend_json(runtime, "/api/real_sensor_config", timeout_seconds=8)
+        if not isinstance(payload, dict):
+            return
+    enabled_entities = payload.get("enabled_entities")
+    if not isinstance(enabled_entities, list):
+        config = payload.get("config")
+        if isinstance(config, dict):
+            enabled_entities = config.get("enabled_entities")
+    if not isinstance(enabled_entities, list):
+        enabled_entities = []
+    enabled_set = {
+        str(entity_id or "").strip().lower()
+        for entity_id in enabled_entities
+        if str(entity_id or "").strip()
+    }
+    local_entities = {
+        str(item.get("entity_id") or "").strip().lower()
+        for item in runtime.get("available_entities", [])
+        if isinstance(item, dict) and str(item.get("entity_id") or "").strip()
+    }
+    if local_entities:
+        enabled_set &= local_entities
+    runtime["enabled_real_entities"] = enabled_set
+    runtime["last_real_sensor_sync_at"] = datetime.now(timezone.utc).isoformat()
 
 
 def _coerce_bool(value: Any, fallback: bool = True) -> bool:
@@ -395,11 +458,11 @@ async def _create_test_sensors_for_all(
     include_occupancy: bool,
     initial_state: str,
 ) -> list[dict[str, Any]]:
-    rooms = [
-        item.strip().lower().replace(" ", "_")
-        for item in rooms_raw.split(",")
-        if item.strip()
-    ]
+    rooms = []
+    for item in rooms_raw.split(","):
+        room = _safe_room_slug(item)
+        if room:
+            rooms.append(room)
     if not rooms:
         rooms = ["bedroom", "kitchen", "living"]
 
@@ -446,7 +509,9 @@ async def _create_test_sensors_for_all(
             f"binary_sensor.{DOMAIN}_{room}_door_test",
             f"input_boolean.{DOMAIN}_{room}_occupancy_test",
         ):
-            hass.states.async_remove(legacy_entity_id)
+            legacy_state = hass.states.get(legacy_entity_id)
+            if legacy_state and legacy_state.attributes.get("inferencia_presencia_test") is True:
+                hass.states.async_remove(legacy_entity_id)
 
     await _upsert_test_switches(hass, domain_data, sensors)
 
@@ -655,6 +720,8 @@ async def _publish_integration_status(runtime: dict[str, Any], *, poller_state: 
         "supported_entities_total": runtime["supported_entities_total"],
         "auto_discovery": runtime["auto_discovery"],
         "tracked_entities": sorted(runtime["tracked_entities"]),
+        "enabled_real_entities": sorted(runtime.get("enabled_real_entities", set())),
+        "last_real_sensor_sync_at": runtime.get("last_real_sensor_sync_at"),
     }
     await _post_backend_json(runtime, "/api/ha_integration_status", payload, timeout_seconds=8)
 
@@ -668,6 +735,7 @@ async def _poll_backend_actions(
         await asyncio.sleep(2)
         request_id = ""
         try:
+            await _sync_real_sensor_selection(runtime)
             await _publish_integration_status(runtime, poller_state="polling")
             query = urlencode({"entry_id": runtime["entry_id"]})
             action_request = await _get_backend_json(runtime, f"/api/ha_actions/pending?{query}")
@@ -989,6 +1057,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "available_entities": [],
         "available_entities_total": 0,
         "supported_entities_total": 0,
+        "enabled_real_entities": set(),
+        "last_real_sensor_sync_at": None,
         "recent_events": deque(maxlen=MAX_RECENT_EVENTS),
         "sent_events": 0,
         "failed_events": 0,
@@ -1002,11 +1072,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if new_state is None:
             return
 
+        entity_id = new_state.entity_id.lower()
         if runtime["auto_discovery"]:
-            domain = new_state.entity_id.split(".", 1)[0].lower()
+            domain = entity_id.split(".", 1)[0]
             if domain not in DEFAULT_AUTO_DOMAINS:
                 return
-        elif new_state.entity_id.lower() not in runtime["tracked_entities"]:
+        elif entity_id not in runtime["tracked_entities"]:
+            return
+        if entity_id not in runtime.get("enabled_real_entities", set()):
             return
 
         hass.async_create_task(
@@ -1020,6 +1093,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     domain_data["entries"][entry.entry_id] = runtime
     await _publish_entity_catalog(hass, runtime, source="ha_startup_scan")
+    try:
+        await _sync_real_sensor_selection(runtime)
+    except Exception as err:  # noqa: BLE001
+        runtime["last_error"] = f"No fue posible sincronizar seleccion de sensores reales: {err!r}"
+        LOGGER.warning(runtime["last_error"])
     runtime["action_poll_task"] = _create_background_task(
         hass,
         entry,

@@ -89,7 +89,7 @@ refrescar_catalogo_sensores:
 
 crear_sensores_prueba:
   name: Crear sensores de prueba
-  description: Crea entidades efimeras de prueba en Home Assistant para validar el escaneo, el bridge y la inferencia antes de usar sensores reales.
+  description: Crea switches de prueba propios de la integracion para validar el escaneo, el bridge y la inferencia antes de usar sensores reales.
   fields:
     rooms:
       name: Habitaciones
@@ -99,7 +99,7 @@ crear_sensores_prueba:
         text:
     include_occupancy:
       name: Incluir occupancy
-      description: Crea tambien input_boolean de ocupacion por habitacion.
+      description: Crea tambien switches de ocupacion por habitacion.
       required: false
       selector:
         boolean:

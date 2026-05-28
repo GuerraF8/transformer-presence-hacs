@@ -63,6 +63,18 @@ La integracion registra estos servicios:
 - `inferencia_presencia.refrescar_catalogo_sensores`
 - `inferencia_presencia.crear_sensores_prueba`
 
+## Seguridad y entidades reales
+
+La integracion separa el catalogo de entidades del envio de eventos:
+
+- Puede publicar al backend un catalogo amplio para que el usuario seleccione sensores.
+- Solo envia cambios de estado de entidades que el backend ya marco como `enabled_entities`.
+- Antes de enviar, cruza esa lista con el catalogo local de esta instancia de Home Assistant para evitar entradas antiguas o de otra maquina.
+- Los sensores de prueba se crean como `switch.inferencia_*_test` con `unique_id` propio.
+- La integracion no modifica entidades existentes de otros dominios ni requiere cambios en `configuration.yaml`.
+
+Esto evita que una instalacion con sensores reales llamados igual que los sensores del historico CSV empiece a alimentar inferencia sin confirmacion explicita en el panel del backend.
+
 ## Diagnostico
 
 La integracion expone:
