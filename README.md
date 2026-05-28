@@ -39,10 +39,20 @@ https://github.com/GuerraF8/transformer-presence-hacs
 
 Campos disponibles:
 
-- `URL base del backend`: URL HTTP/HTTPS del backend, sin ruta final. Ejemplo: `http://192.168.1.50:8081`.
+- `URL interna del backend para Home Assistant`: URL HTTP/HTTPS que Home Assistant Core puede alcanzar. Ejemplo: `http://192.168.1.50:8081`.
+- `URL publica del panel para el navegador`: opcional. Usala cuando abres Home Assistant remotamente y el navegador necesita otra ruta hacia el backend. Ejemplo: `http://100.68.121.126:8081`.
 - `Entidades a escuchar`: lista opcional separada por comas. Si queda vacia, la integracion escucha automaticamente dominios comunes como `binary_sensor`, `sensor`, `person`, `device_tracker`, `input_boolean`, `switch`, `cover` y `lock`.
 
-La URL del backend se guarda en la entrada de configuracion de Home Assistant y puede cambiarse desde las opciones de la integracion. No se usa `backend_url.override` ni scripts SSH para configurar una instalacion HACS.
+La URL interna se usa para publicar eventos, catalogo y heartbeat desde Home Assistant hacia el backend. La URL publica se usa solo para registrar el panel iframe en la barra lateral. Si dejas la URL publica vacia, el panel usa la URL interna.
+
+La configuracion se guarda en la entrada de Home Assistant y puede cambiarse desde las opciones de la integracion. No se usa `backend_url.override` ni scripts SSH para configurar una instalacion HACS.
+
+Ejemplo con Home Assistant en LAN y acceso remoto por Tailscale:
+
+```text
+URL interna del backend para Home Assistant: http://192.168.0.221:8081
+URL publica del panel para el navegador:     http://100.68.121.126:8081
+```
 
 ## Servicios
 

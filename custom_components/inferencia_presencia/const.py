@@ -5,6 +5,9 @@ DOMAIN = "inferencia_presencia"
 CONF_INFERENCE_API_URL = "inference_api_url"
 DEFAULT_INFERENCE_API_URL = "http://127.0.0.1:8081"
 
+CONF_PANEL_URL = "panel_url"
+DEFAULT_PANEL_URL = ""
+
 CONF_SENSOR_ENTITIES = "sensor_entities"
 DEFAULT_SENSOR_ENTITIES = ""
 

@@ -25,8 +25,10 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_INFERENCE_API_URL,
+    CONF_PANEL_URL,
     CONF_SENSOR_ENTITIES,
     DEFAULT_INFERENCE_API_URL,
+    DEFAULT_PANEL_URL,
     DEFAULT_SENSOR_ENTITIES,
     DOMAIN,
     MAX_ENTITY_CATALOG,
@@ -192,6 +194,10 @@ def _panel_url_from_backend(base_url: str) -> str:
     return f"{base_url.rstrip('/')}/?embedded=1"
 
 
+def _resolve_panel_url(panel_url: str, backend_url: str) -> str:
+    return _panel_url_from_backend(panel_url or backend_url)
+
+
 def _entity_supported(entity_id: str, sensor_type: str) -> bool:
     domain = entity_id.split(".", 1)[0].lower() if "." in entity_id else ""
     return domain in DEFAULT_AUTO_DOMAINS and sensor_type in {"motion", "door", "occupancy"}
@@ -285,6 +291,7 @@ class InferenciaPresenciaStatusView(HomeAssistantView):
                 {
                     "entry_id": entry_id,
                     "backend_url": runtime["backend_url"],
+                    "panel_base_url": runtime.get("panel_base_url", ""),
                     "tracked_entities": sorted(runtime["tracked_entities"]),
                     "auto_discovery": runtime["auto_discovery"],
                     "last_event": runtime["last_event"],
@@ -677,8 +684,13 @@ async def _process_state_change(
     await _forward_payload(runtime, payload)
 
 
-def _register_panel(hass: HomeAssistant, domain_data: dict[str, Any], backend_url: str) -> None:
-    panel_url = _panel_url_from_backend(backend_url)
+def _register_panel(
+    hass: HomeAssistant,
+    domain_data: dict[str, Any],
+    backend_url: str,
+    panel_base_url: str = "",
+) -> None:
+    panel_url = _resolve_panel_url(panel_base_url, backend_url)
 
     if (
         domain_data.get("panel_registered")
@@ -889,6 +901,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         ).strip()
     )
+    panel_base_url = (
+        str(
+            entry.options.get(
+                CONF_PANEL_URL,
+                entry.data.get(CONF_PANEL_URL, DEFAULT_PANEL_URL),
+            )
+        ).strip()
+    )
     sensor_entities_raw = str(
         entry.options.get(
             CONF_SENSOR_ENTITIES,
@@ -900,6 +920,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     runtime: dict[str, Any] = {
         "entry_id": entry.entry_id,
         "backend_url": backend_url or DEFAULT_INFERENCE_API_URL,
+        "panel_base_url": panel_base_url,
         "tracked_entities": tracked_entities,
         "auto_discovery": len(tracked_entities) == 0,
         "http_session": async_get_clientsession(hass),
@@ -961,7 +982,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-    _register_panel(hass, domain_data, runtime["backend_url"])
+    _register_panel(hass, domain_data, runtime["backend_url"], runtime["panel_base_url"])
 
     LOGGER.info(
         "Integracion %s iniciada. Backend: %s | auto_discovery=%s | tracked=%s",
@@ -990,7 +1011,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if domain_data["entries"]:
         first_runtime = next(iter(domain_data["entries"].values()))
-        _register_panel(hass, domain_data, first_runtime["backend_url"])
+        _register_panel(
+            hass,
+            domain_data,
+            first_runtime["backend_url"],
+            first_runtime.get("panel_base_url", ""),
+        )
         return True
 
     if domain_data.get("panel_registered"):
