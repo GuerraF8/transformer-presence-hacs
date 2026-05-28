@@ -17,7 +17,7 @@ from homeassistant.components.frontend import (
     async_remove_panel,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.const import EVENT_STATE_CHANGED, Platform
 from homeassistant.core import Event, HomeAssistant, ServiceCall, State, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_state_change_event
@@ -43,6 +43,7 @@ from .const import (
 )
 
 LOGGER = logging.getLogger(__name__)
+PLATFORMS = [Platform.SWITCH]
 
 DOMAIN_DEFAULTS: dict[str, Any] = {
     "entries": {},
@@ -50,6 +51,8 @@ DOMAIN_DEFAULTS: dict[str, Any] = {
     "panel_registered": False,
     "panel_url": None,
     "status_view_registered": False,
+    "test_sensors": {},
+    "test_switch_adders": {},
 }
 
 DEFAULT_AUTO_DOMAINS = {
@@ -144,6 +147,8 @@ def _ensure_domain_data(hass: HomeAssistant) -> dict[str, Any]:
         "panel_registered": False,
         "panel_url": None,
         "status_view_registered": False,
+        "test_sensors": {},
+        "test_switch_adders": {},
     }
     return hass.data[DOMAIN]
 
@@ -204,8 +209,9 @@ def _entity_supported(entity_id: str, sensor_type: str) -> bool:
 
 
 def _entity_catalog_item(state: State, source: str) -> dict[str, Any]:
-    sensor_type = _infer_sensor_type(state.entity_id)
     attrs = state.attributes or {}
+    sensor_type = str(attrs.get("sensor_type") or _infer_sensor_type(state.entity_id)).strip().lower()
+    room = str(attrs.get("room") or _infer_room(state.entity_id)).strip().lower()
     name = str(attrs.get("friendly_name") or state.entity_id)
     device_class = str(attrs.get("device_class") or "")
     return {
@@ -214,7 +220,7 @@ def _entity_catalog_item(state: State, source: str) -> dict[str, Any]:
         "domain": state.entity_id.split(".", 1)[0].lower() if "." in state.entity_id else "",
         "state": state.state,
         "sensor_type": sensor_type,
-        "room": _infer_room(state.entity_id),
+        "room": room,
         "device_class": device_class,
         "source": source,
         "supported": _entity_supported(state.entity_id, sensor_type),
@@ -346,6 +352,41 @@ def _coerce_bool(value: Any, fallback: bool = True) -> bool:
     return fallback
 
 
+async def _upsert_test_switches(
+    hass: HomeAssistant,
+    domain_data: dict[str, Any],
+    sensors: list[dict[str, Any]],
+) -> None:
+    store = domain_data.setdefault("test_sensors", {})
+    if not isinstance(store, dict):
+        store = {}
+        domain_data["test_sensors"] = store
+
+    new_items: list[dict[str, Any]] = []
+    for sensor in sensors:
+        entity_id = str(sensor.get("entity_id") or "").strip().lower()
+        if not entity_id:
+            continue
+        item = {
+            "entity_id": entity_id,
+            "unique_id": str(sensor.get("unique_id") or entity_id.replace(".", "_")),
+            "name": str(sensor.get("name") or entity_id),
+            "room": str(sensor.get("room") or ""),
+            "sensor_type": str(sensor.get("sensor_type") or "other"),
+            "state": "on" if _coerce_bool(sensor.get("state"), False) else "off",
+        }
+        if entity_id not in store:
+            new_items.append(item)
+        store[entity_id] = item
+
+    adders = domain_data.get("test_switch_adders")
+    if not new_items or not isinstance(adders, dict):
+        return
+    for async_add_entities in list(adders.values()):
+        async_add_entities([item.copy() for item in new_items])
+    await asyncio.sleep(0)
+
+
 async def _create_test_sensors_for_all(
     hass: HomeAssistant,
     domain_data: dict[str, Any],
@@ -366,38 +407,48 @@ async def _create_test_sensors_for_all(
     if initial_state not in {"on", "off"}:
         initial_state = "off"
     created_at = datetime.now(timezone.utc).isoformat()
+    sensors: list[dict[str, Any]] = []
 
     for room in rooms:
-        hass.states.async_set(
-            f"binary_sensor.{DOMAIN}_{room}_motion_test",
-            initial_state,
+        sensors.append(
             {
-                "friendly_name": f"Inferencia {room} motion test",
-                "device_class": "motion",
-                "inferencia_presencia_test": True,
+                "entity_id": f"switch.{DOMAIN}_{room}_motion_test",
+                "unique_id": f"{DOMAIN}_{room}_motion_test",
+                "name": f"Inferencia {room} motion test",
                 "room": room,
+                "sensor_type": "motion",
+                "state": initial_state,
             },
         )
-        hass.states.async_set(
-            f"binary_sensor.{DOMAIN}_{room}_door_test",
-            "off",
+        sensors.append(
             {
-                "friendly_name": f"Inferencia {room} door test",
-                "device_class": "door",
-                "inferencia_presencia_test": True,
+                "entity_id": f"switch.{DOMAIN}_{room}_door_test",
+                "unique_id": f"{DOMAIN}_{room}_door_test",
+                "name": f"Inferencia {room} door test",
                 "room": room,
+                "sensor_type": "door",
+                "state": "off",
             },
         )
         if include_occupancy:
-            hass.states.async_set(
-                f"input_boolean.{DOMAIN}_{room}_occupancy_test",
-                "off",
+            sensors.append(
                 {
-                    "friendly_name": f"Inferencia {room} occupancy test",
-                    "inferencia_presencia_test": True,
+                    "entity_id": f"switch.{DOMAIN}_{room}_occupancy_test",
+                    "unique_id": f"{DOMAIN}_{room}_occupancy_test",
+                    "name": f"Inferencia {room} occupancy test",
                     "room": room,
+                    "sensor_type": "occupancy",
+                    "state": "off",
                 },
             )
+        for legacy_entity_id in (
+            f"binary_sensor.{DOMAIN}_{room}_motion_test",
+            f"binary_sensor.{DOMAIN}_{room}_door_test",
+            f"input_boolean.{DOMAIN}_{room}_occupancy_test",
+        ):
+            hass.states.async_remove(legacy_entity_id)
+
+    await _upsert_test_switches(hass, domain_data, sensors)
 
     for runtime in domain_data["entries"].values():
         runtime["recent_events"].append(
@@ -673,11 +724,14 @@ async def _process_state_change(
     if new_state.state.lower() in {"unknown", "unavailable"}:
         return
 
+    attrs = new_state.attributes or {}
+    sensor_type = str(attrs.get("sensor_type") or _infer_sensor_type(new_state.entity_id)).strip().lower()
+    room = str(attrs.get("room") or _infer_room(new_state.entity_id)).strip().lower()
     payload = {
         "entity_id": new_state.entity_id,
         "state": new_state.state,
-        "sensor_type": _infer_sensor_type(new_state.entity_id),
-        "room": _infer_room(new_state.entity_id),
+        "sensor_type": sensor_type,
+        "room": room,
         "timestamp": new_state.last_changed.isoformat(),
         "source": source,
     }
@@ -892,6 +946,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     domain_data = _ensure_domain_data(hass)
     _register_status_view(hass, domain_data)
     await _ensure_services(hass, domain_data)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     backend_url = (
         str(
@@ -1008,6 +1063,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         runtime["unsub"]()
     if runtime and runtime.get("action_poll_task"):
         runtime["action_poll_task"].cancel()
+
+    await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if domain_data["entries"]:
         first_runtime = next(iter(domain_data["entries"].values()))
