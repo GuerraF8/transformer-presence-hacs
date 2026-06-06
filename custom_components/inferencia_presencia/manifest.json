@@ -1,7 +1,7 @@
 {
   "domain": "inferencia_presencia",
   "name": "Transformer Presence Bridge",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "documentation": "https://github.com/GuerraF8/transformer-presence-hacs",
   "issue_tracker": "https://github.com/GuerraF8/transformer-presence-hacs/issues",
   "requirements": [],

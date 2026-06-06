@@ -7,6 +7,7 @@
         "data": {
           "inference_api_url": "URL interna del backend para Home Assistant",
           "panel_url": "URL publica del panel para el navegador",
+          "dev_mode": "Modo desarrollador (muestra Replay y Simulador)",
           "sensor_entities": "Entidades disponibles para catalogo (coma separadas, vacio = auto; los eventos solo se envian si el backend las confirma)"
         }
       }

@@ -41,9 +41,12 @@ Campos disponibles:
 
 - `URL interna del backend para Home Assistant`: URL HTTP/HTTPS que Home Assistant Core puede alcanzar. Ejemplo: `http://192.168.1.50:8081`.
 - `URL publica del panel para el navegador`: opcional. Usala cuando abres Home Assistant remotamente y el navegador necesita otra ruta hacia el backend. Ejemplo: `http://100.68.121.126:8081`.
+- `Modo desarrollador`: desactivado por defecto. Al activarlo, el panel muestra las herramientas de Replay y el acceso al Simulador.
 - `Entidades a escuchar`: lista opcional separada por comas. Si queda vacia, la integracion escucha automaticamente dominios comunes como `binary_sensor`, `sensor`, `person`, `device_tracker`, `input_boolean`, `switch`, `cover` y `lock`.
 
 La URL interna se usa para publicar eventos, catalogo y heartbeat desde Home Assistant hacia el backend. La URL publica se usa solo para registrar el panel iframe en la barra lateral. Si dejas la URL publica vacia, el panel usa la URL interna.
+
+El panel registrado agrega los parametros `embedded=1` y `dev=0|1` sin eliminar parametros existentes de la URL publica. Abrir el backend directamente mantiene visibles las herramientas de desarrollo.
 
 La configuracion se guarda en la entrada de Home Assistant y puede cambiarse desde las opciones de la integracion. No se usa `backend_url.override` ni scripts SSH para configurar una instalacion HACS.
 

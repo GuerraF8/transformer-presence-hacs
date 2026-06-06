@@ -7,9 +7,11 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
+    CONF_DEV_MODE,
     CONF_INFERENCE_API_URL,
     CONF_PANEL_URL,
     CONF_SENSOR_ENTITIES,
+    DEFAULT_DEV_MODE,
     DEFAULT_INFERENCE_API_URL,
     DEFAULT_PANEL_URL,
     DEFAULT_SENSOR_ENTITIES,
@@ -38,6 +40,7 @@ class InferenciaPresenciaConfigFlow(ConfigFlow, domain=DOMAIN):
             panel_url = str(
                 user_input.get(CONF_PANEL_URL, DEFAULT_PANEL_URL)
             ).strip()
+            dev_mode = bool(user_input.get(CONF_DEV_MODE, DEFAULT_DEV_MODE))
             sensor_entities = str(
                 user_input.get(CONF_SENSOR_ENTITIES, DEFAULT_SENSOR_ENTITIES)
             ).strip()
@@ -45,6 +48,7 @@ class InferenciaPresenciaConfigFlow(ConfigFlow, domain=DOMAIN):
             data = {
                 CONF_INFERENCE_API_URL: backend_url or DEFAULT_INFERENCE_API_URL,
                 CONF_PANEL_URL: panel_url,
+                CONF_DEV_MODE: dev_mode,
                 CONF_SENSOR_ENTITIES: sensor_entities,
             }
 
@@ -65,6 +69,10 @@ class InferenciaPresenciaConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PANEL_URL,
                         default=DEFAULT_PANEL_URL,
                     ): str,
+                    vol.Optional(
+                        CONF_DEV_MODE,
+                        default=DEFAULT_DEV_MODE,
+                    ): bool,
                     vol.Optional(
                         CONF_SENSOR_ENTITIES,
                         default=DEFAULT_SENSOR_ENTITIES,
@@ -92,6 +100,10 @@ class InferenciaPresenciaOptionsFlow(OptionsFlow):
             CONF_PANEL_URL,
             self._config_entry.data.get(CONF_PANEL_URL, DEFAULT_PANEL_URL),
         )
+        current_dev_mode = self._config_entry.options.get(
+            CONF_DEV_MODE,
+            self._config_entry.data.get(CONF_DEV_MODE, DEFAULT_DEV_MODE),
+        )
         current_entities = self._config_entry.options.get(
             CONF_SENSOR_ENTITIES,
             self._config_entry.data.get(CONF_SENSOR_ENTITIES, DEFAULT_SENSOR_ENTITIES),
@@ -103,6 +115,7 @@ class InferenciaPresenciaOptionsFlow(OptionsFlow):
                 {
                     vol.Optional(CONF_INFERENCE_API_URL, default=current_url): str,
                     vol.Optional(CONF_PANEL_URL, default=current_panel_url): str,
+                    vol.Optional(CONF_DEV_MODE, default=current_dev_mode): bool,
                     vol.Optional(CONF_SENSOR_ENTITIES, default=current_entities): str,
                 }
             ),

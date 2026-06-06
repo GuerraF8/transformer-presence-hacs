@@ -6,7 +6,7 @@ import re
 from collections import deque
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlencode, urljoin
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import aiohttp
 import voluptuous as vol
@@ -25,9 +25,11 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
+    CONF_DEV_MODE,
     CONF_INFERENCE_API_URL,
     CONF_PANEL_URL,
     CONF_SENSOR_ENTITIES,
+    DEFAULT_DEV_MODE,
     DEFAULT_INFERENCE_API_URL,
     DEFAULT_PANEL_URL,
     DEFAULT_SENSOR_ENTITIES,
@@ -202,12 +204,21 @@ def _build_url(base_url: str, path: str) -> str:
     return urljoin(base, path.lstrip("/"))
 
 
-def _panel_url_from_backend(base_url: str) -> str:
-    return f"{base_url.rstrip('/')}/?embedded=1"
+def _panel_url_from_backend(base_url: str, dev_mode: bool = DEFAULT_DEV_MODE) -> str:
+    parsed = urlparse(base_url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["embedded"] = "1"
+    query["dev"] = "1" if dev_mode else "0"
+    path = parsed.path or "/"
+    return urlunparse(parsed._replace(path=path, query=urlencode(query)))
 
 
-def _resolve_panel_url(panel_url: str, backend_url: str) -> str:
-    return _panel_url_from_backend(panel_url or backend_url)
+def _resolve_panel_url(
+    panel_url: str,
+    backend_url: str,
+    dev_mode: bool = DEFAULT_DEV_MODE,
+) -> str:
+    return _panel_url_from_backend(panel_url or backend_url, dev_mode)
 
 
 def _entity_supported(entity_id: str, sensor_type: str) -> bool:
@@ -811,8 +822,9 @@ def _register_panel(
     domain_data: dict[str, Any],
     backend_url: str,
     panel_base_url: str = "",
+    dev_mode: bool = DEFAULT_DEV_MODE,
 ) -> None:
-    panel_url = _resolve_panel_url(panel_base_url, backend_url)
+    panel_url = _resolve_panel_url(panel_base_url, backend_url, dev_mode)
 
     if (
         domain_data.get("panel_registered")
@@ -1032,6 +1044,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         ).strip()
     )
+    dev_mode = bool(
+        entry.options.get(
+            CONF_DEV_MODE,
+            entry.data.get(CONF_DEV_MODE, DEFAULT_DEV_MODE),
+        )
+    )
     sensor_entities_raw = str(
         entry.options.get(
             CONF_SENSOR_ENTITIES,
@@ -1044,6 +1062,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "entry_id": entry.entry_id,
         "backend_url": backend_url or DEFAULT_INFERENCE_API_URL,
         "panel_base_url": panel_base_url,
+        "dev_mode": dev_mode,
         "tracked_entities": tracked_entities,
         "auto_discovery": len(tracked_entities) == 0,
         "http_session": async_get_clientsession(hass),
@@ -1115,7 +1134,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-    _register_panel(hass, domain_data, runtime["backend_url"], runtime["panel_base_url"])
+    _register_panel(
+        hass,
+        domain_data,
+        runtime["backend_url"],
+        runtime["panel_base_url"],
+        runtime["dev_mode"],
+    )
 
     LOGGER.info(
         "Integracion %s iniciada. Backend: %s | auto_discovery=%s | tracked=%s",
@@ -1151,6 +1176,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             domain_data,
             first_runtime["backend_url"],
             first_runtime.get("panel_base_url", ""),
+            first_runtime.get("dev_mode", DEFAULT_DEV_MODE),
         )
         return True
 
