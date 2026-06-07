@@ -57,6 +57,53 @@ URL interna del backend para Home Assistant: http://192.168.0.221:8081
 URL publica del panel para el navegador:     http://100.68.121.126:8081
 ```
 
+## Entidades para automatizaciones
+
+Desde la version `1.2.0`, la integracion crea entidades nativas agrupadas bajo el dispositivo `Inferencia de presencia`:
+
+- `binary_sensor.inferencia_presencia_hogar`: activo si existe al menos una habitacion ocupada.
+- `binary_sensor.inferencia_presencia_<habitacion>`: ocupacion inferida para cada habitacion del mapa.
+- `sensor.inferencia_presencia_habitacion_actual`: habitacion inferida o `sin_presencia`.
+- `sensor.inferencia_presencia_personas_estimadas`: cantidad actual estimada.
+
+Las entidades se actualizan inmediatamente con la respuesta de `/api/events` y consultan `/api/sim_data` cada 5 segundos como respaldo. Solo estan disponibles en modo de sensores reales (`listen`). Replay, Simulador o tres fallos consecutivos del backend las marcan como `unavailable`, sin publicar una falsa ausencia.
+
+Home Assistant puede agregar un sufijo al `entity_id` si ya existe otra entidad con el mismo nombre. Usa el ID mostrado en `Settings > Devices & services > Entities` al crear la automatizacion.
+
+Ejemplo de automatizacion que enciende una luz al detectar ocupacion en cocina:
+
+```yaml
+alias: Encender cocina por presencia inferida
+trigger:
+  - platform: state
+    entity_id: binary_sensor.inferencia_presencia_kitchen
+    from: "off"
+    to: "on"
+condition:
+  - condition: state
+    entity_id: binary_sensor.inferencia_presencia_hogar
+    state: "on"
+action:
+  - service: light.turn_on
+    target:
+      entity_id: light.cocina
+mode: single
+```
+
+Ejemplo de condicion reutilizable:
+
+```yaml
+condition:
+  - condition: state
+    entity_id: sensor.inferencia_presencia_habitacion_actual
+    state: "kitchen"
+  - condition: numeric_state
+    entity_id: sensor.inferencia_presencia_personas_estimadas
+    above: 0
+```
+
+El historial de estas entidades queda disponible mediante Recorder cuando ese componente estandar de Home Assistant esta habilitado.
+
 ## Servicios
 
 La integracion registra estos servicios:

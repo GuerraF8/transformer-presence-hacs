@@ -44,9 +44,10 @@ from .const import (
     SERVICE_REFRESH_SENSOR_CATALOG,
     SERVICE_START_FULL_REPLAY,
 )
+from .coordinator import PresenceDataUpdateCoordinator
 
 LOGGER = logging.getLogger(__name__)
-PLATFORMS = [Platform.SWITCH]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
 
 DOMAIN_DEFAULTS: dict[str, Any] = {
     "entries": {},
@@ -251,6 +252,8 @@ def _scan_available_entities(hass: HomeAssistant, runtime: dict[str, Any]) -> li
     tracked = runtime["tracked_entities"]
 
     for state in hass.states.async_all():
+        if state.attributes.get("inferencia_presencia_output") is True:
+            continue
         entity_id = state.entity_id.lower()
         domain = entity_id.split(".", 1)[0]
         source = "auto_domain"
@@ -331,6 +334,15 @@ class InferenciaPresenciaStatusView(HomeAssistantView):
                     "failed_events": runtime["failed_events"],
                     "enabled_real_entities": sorted(runtime.get("enabled_real_entities", set())),
                     "last_real_sensor_sync_at": runtime.get("last_real_sensor_sync_at"),
+                    "presence_update_success": bool(
+                        runtime.get("coordinator")
+                        and runtime["coordinator"].last_update_success
+                    ),
+                    "presence_update_failures": getattr(
+                        runtime.get("coordinator"),
+                        "consecutive_failures",
+                        0,
+                    ),
                 }
             )
 
@@ -635,6 +647,9 @@ async def _forward_payload(
                     "room": payload["room"],
                 }
             )
+            coordinator = runtime.get("coordinator")
+            if isinstance(coordinator, PresenceDataUpdateCoordinator):
+                coordinator.async_apply_event_response(parsed)
     except (aiohttp.ClientError, TimeoutError) as err:
         runtime["failed_events"] += 1
         runtime["last_error"] = f"No fue posible enviar evento a {endpoint}: {err}"
@@ -1026,7 +1041,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     domain_data = _ensure_domain_data(hass)
     _register_status_view(hass, domain_data)
     await _ensure_services(hass, domain_data)
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     backend_url = (
         str(
@@ -1083,12 +1097,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "failed_events": 0,
     }
 
+    async def _fetch_presence_snapshot() -> dict[str, Any] | None:
+        return await _get_backend_json(runtime, "/api/sim_data", timeout_seconds=8)
+
+    coordinator = PresenceDataUpdateCoordinator(hass, _fetch_presence_snapshot)
+    runtime["coordinator"] = coordinator
+    entry.runtime_data = runtime
+    domain_data["entries"][entry.entry_id] = runtime
+
+    await coordinator.async_config_entry_first_refresh()
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
     @callback
     def _handle_state_event(event: Event) -> None:
         new_state = event.data.get("new_state")
         old_state = event.data.get("old_state")
 
         if new_state is None:
+            return
+        if new_state.attributes.get("inferencia_presencia_output") is True:
             return
 
         entity_id = new_state.entity_id.lower()
@@ -1110,7 +1137,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         )
 
-    domain_data["entries"][entry.entry_id] = runtime
     await _publish_entity_catalog(hass, runtime, source="ha_startup_scan")
     try:
         await _sync_real_sensor_selection(runtime)
