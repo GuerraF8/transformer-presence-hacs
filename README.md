@@ -4,6 +4,9 @@ Integracion custom de Home Assistant para conectar sensores y eventos de estado 
 
 La integracion registra un panel en la barra lateral, publica el catalogo de entidades disponibles al backend, escucha cambios de estado y reenvia eventos normalizados para inferencia de presencia.
 
+La version `1.2.1` separa ciclo de vida, runtime tipado, cliente HTTP, utilidades
+y registro del panel. Consulta [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Requisitos
 
 - Home Assistant con HACS instalado.
