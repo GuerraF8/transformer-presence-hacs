@@ -17,6 +17,9 @@ DOMAIN_DEFAULTS: dict[str, Any] = {
     "status_view_registered": False,
     "test_sensors": {},
     "test_switch_adders": {},
+    "test_switch_entities": {},
+    "test_resources": {"areas": {}, "sensors": {}},
+    "test_resource_store": None,
 }
 
 

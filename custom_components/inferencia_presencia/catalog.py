@@ -7,21 +7,54 @@ from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.core import HomeAssistant, State
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .backend_client import get_json, post_json
-from .const import MAX_ENTITY_CATALOG
-from .ha_utils import DEFAULT_AUTO_DOMAINS, entity_supported, infer_room, infer_sensor_type
+from .ha_utils import entity_supported, infer_room, infer_sensor_type
 from .runtime import IntegrationRuntime
 
 LOGGER = logging.getLogger(__name__)
 
 
-def entity_catalog_item(state: State, source: str) -> dict[str, Any]:
+def resolve_effective_area(
+    registry_entry: Any,
+    device_registry: Any,
+) -> tuple[str, str, str]:
+    if registry_entry is None:
+        return "", "", ""
+    device_id = str(registry_entry.device_id or "")
+    area_id = str(registry_entry.area_id or "")
+    if area_id:
+        return area_id, "entity", device_id
+    if device_id:
+        device = device_registry.async_get(device_id)
+        if device and device.area_id:
+            return str(device.area_id), "device", device_id
+    return "", "", device_id
+
+
+def entity_catalog_item(
+    state: State,
+    source: str,
+    *,
+    area_id: str = "",
+    area_name: str = "",
+    area_source: str = "",
+    device_id: str = "",
+    unique_id: str = "",
+    platform: str = "",
+) -> dict[str, Any]:
     attrs = state.attributes or {}
     sensor_type = str(
         attrs.get("sensor_type") or infer_sensor_type(state.entity_id)
     ).strip().lower()
-    room = str(attrs.get("room") or infer_room(state.entity_id)).strip().lower()
+    room = str(
+        attrs.get("room")
+        or area_name
+        or infer_room(state.entity_id)
+    ).strip().lower()
     return {
         "entity_id": state.entity_id,
         "name": str(attrs.get("friendly_name") or state.entity_id),
@@ -35,28 +68,57 @@ def entity_catalog_item(state: State, source: str) -> dict[str, Any]:
         "source": source,
         "supported": entity_supported(state.entity_id, sensor_type),
         "last_changed": state.last_changed.isoformat() if state.last_changed else None,
+        "area_id": area_id,
+        "area_name": area_name,
+        "area_source": area_source,
+        "device_id": device_id,
+        "unique_id": unique_id,
+        "platform": platform,
     }
 
 
-def scan_available_entities(
+async def scan_available_entities(
     hass: HomeAssistant, runtime: IntegrationRuntime
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     catalog: list[dict[str, Any]] = []
-    tracked = runtime["tracked_entities"]
+    area_registry = ar.async_get(hass)
+    entity_registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+    areas = list(area_registry.async_list_areas())
+    area_names = {area.id: area.name for area in areas}
+    area_entities: dict[str, list[str]] = {area.id: [] for area in areas}
     for state in hass.states.async_all():
         if state.attributes.get("inferencia_presencia_output") is True:
             continue
         entity_id = state.entity_id.lower()
-        domain = entity_id.split(".", 1)[0]
-        source = "auto_domain"
-        if runtime["auto_discovery"]:
-            if domain not in DEFAULT_AUTO_DOMAINS:
-                continue
-        elif entity_id not in tracked:
-            continue
-        else:
-            source = "explicit"
-        catalog.append(entity_catalog_item(state, source))
+        registry_entry = entity_registry.async_get(entity_id)
+        area_id, area_source, device_id = resolve_effective_area(
+            registry_entry,
+            device_registry,
+        )
+        if area_id in area_entities:
+            area_entities[area_id].append(entity_id)
+        source = (
+            "explicit"
+            if entity_id in runtime["tracked_entities"]
+            else "ha_registry"
+        )
+        catalog.append(
+            entity_catalog_item(
+                state,
+                source,
+                area_id=area_id,
+                area_name=area_names.get(area_id, ""),
+                area_source=area_source,
+                device_id=device_id,
+                unique_id=str(registry_entry.unique_id or "")
+                if registry_entry
+                else "",
+                platform=str(registry_entry.platform or "")
+                if registry_entry
+                else "",
+            )
+        )
 
     catalog.sort(
         key=lambda item: (
@@ -66,7 +128,17 @@ def scan_available_entities(
             item["entity_id"],
         )
     )
-    return catalog[:MAX_ENTITY_CATALOG]
+    area_payload = [
+        {
+            "area_id": area.id,
+            "name": area.name,
+            "aliases": sorted(area.aliases or []),
+            "floor_id": area.floor_id,
+            "entity_ids": sorted(area_entities.get(area.id, [])),
+        }
+        for area in sorted(areas, key=lambda item: item.name.lower())
+    ]
+    return catalog, area_payload
 
 
 async def publish_entity_catalog(
@@ -74,7 +146,7 @@ async def publish_entity_catalog(
     runtime: IntegrationRuntime,
     source: str = "ha_scan",
 ) -> None:
-    entities = scan_available_entities(hass, runtime)
+    entities, areas = await scan_available_entities(hass, runtime)
     scanned_at = datetime.now(timezone.utc).isoformat()
     runtime["available_entities"] = entities
     runtime["available_entities_total"] = len(entities)
@@ -82,12 +154,14 @@ async def publish_entity_catalog(
         1 for item in entities if item["supported"]
     )
     runtime["last_scan_at"] = scanned_at
+    runtime["available_areas"] = areas
     payload = {
         "source": source,
         "entry_id": runtime["entry_id"],
         "scanned_at": scanned_at,
         "auto_discovery": runtime["auto_discovery"],
         "tracked_entities": sorted(runtime["tracked_entities"]),
+        "areas": areas,
         "entities": entities,
     }
     try:
@@ -131,6 +205,7 @@ async def publish_entity_catalog_from_cache(
         or datetime.now(timezone.utc).isoformat(),
         "auto_discovery": runtime["auto_discovery"],
         "tracked_entities": sorted(runtime["tracked_entities"]),
+        "areas": runtime.get("available_areas", []),
         "entities": entities,
     }
     runtime["last_backend_response"] = await post_json(

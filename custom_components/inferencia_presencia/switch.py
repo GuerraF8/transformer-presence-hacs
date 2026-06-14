@@ -20,6 +20,17 @@ class InferenciaPresenciaTestSwitch(SwitchEntity):
         self._attr_unique_id = str(description["unique_id"])
         self._attr_name = str(description["name"])
 
+    async def async_added_to_hass(self) -> None:
+        domain_data = self._hass.data.setdefault(DOMAIN, {})
+        entities = domain_data.setdefault("test_switch_entities", {})
+        entities[self._entity_id] = self
+
+    async def async_will_remove_from_hass(self) -> None:
+        domain_data = self._hass.data.get(DOMAIN, {})
+        entities = domain_data.get("test_switch_entities", {})
+        if isinstance(entities, dict):
+            entities.pop(self._entity_id, None)
+
     @property
     def _store_item(self) -> dict[str, Any]:
         domain_data = self._hass.data.get(DOMAIN, {})
@@ -38,6 +49,7 @@ class InferenciaPresenciaTestSwitch(SwitchEntity):
             "inferencia_presencia_test": True,
             "room": item.get("room", ""),
             "sensor_type": item.get("sensor_type", "other"),
+            "area_id": item.get("area_id", ""),
         }
 
     async def async_turn_on(self, **kwargs: Any) -> None:

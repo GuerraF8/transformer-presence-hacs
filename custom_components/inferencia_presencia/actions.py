@@ -14,7 +14,10 @@ from .backend_client import get_json, post_json
 from .catalog import refresh_catalog_for_all, sync_real_sensor_selection
 from .ha_utils import coerce_bool
 from .runtime import IntegrationRuntime
-from .test_sensors import create_test_sensors_for_all
+from .test_sensors import (
+    create_test_sensors_for_all,
+    remove_test_resources_for_all,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,14 +37,21 @@ async def execute_backend_action(
         entries = await refresh_catalog_for_all(hass, domain_data)
         return {"status": "ok", "action": action, "entries": entries}
     if action == "create_test_sensors":
-        entries = await create_test_sensors_for_all(
+        report = await create_test_sensors_for_all(
             hass,
             domain_data,
             rooms_raw=str(payload.get("rooms", "bedroom,kitchen,living")),
             include_occupancy=coerce_bool(payload.get("include_occupancy"), True),
             initial_state=str(payload.get("initial_state", "off")),
         )
-        return {"status": "ok", "action": action, "entries": entries}
+        return {"status": "ok", "action": action, **report}
+    if action in {"remove_test_sensors", "remove_test_resources"}:
+        result = await remove_test_resources_for_all(
+            hass,
+            domain_data,
+            include_areas=action == "remove_test_resources",
+        )
+        return {"action": action, **result}
     return {"status": "error", "action": action, "error": "accion no soportada"}
 
 

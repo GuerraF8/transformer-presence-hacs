@@ -76,6 +76,8 @@ def normalize_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
     replay = replay if isinstance(replay, dict) else {}
     model = payload.get("model")
     model = model if isinstance(model, dict) else {}
+    profile = payload.get("profile")
+    profile = profile if isinstance(profile, dict) else {}
     events = payload.get("events")
     latest_event = events[-1] if isinstance(events, list) and events else {}
     latest_event = latest_event if isinstance(latest_event, dict) else {}
@@ -115,7 +117,12 @@ def normalize_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
         "updated_at": presence.get("updated_at") or latest_event.get("timestamp"),
         "input_mode": input_mode,
         "model": model_name,
-        "service_available": True,
+        "profile_id": profile.get("active_profile_id"),
+        "profile_name": profile.get("name"),
+        "profile_revision": profile.get("revision"),
+        "service_available": (
+            bool(profile.get("available")) if profile else True
+        ),
         "consecutive_failures": 0,
     }
 
@@ -130,7 +137,7 @@ def normalize_event_response(
 
     if payload.get("status") == "ignored":
         current["input_mode"] = input_mode
-        current["service_available"] = True
+        current["service_available"] = payload.get("reason") != "no_active_profile"
         current["consecutive_failures"] = 0
         return current
 
@@ -183,6 +190,9 @@ def normalize_event_response(
         "updated_at": payload.get("updated_at") or event.get("timestamp"),
         "input_mode": input_mode,
         "model": model_name,
+        "profile_id": current.get("profile_id"),
+        "profile_name": current.get("profile_name"),
+        "profile_revision": current.get("profile_revision"),
         "service_available": True,
         "consecutive_failures": 0,
     }

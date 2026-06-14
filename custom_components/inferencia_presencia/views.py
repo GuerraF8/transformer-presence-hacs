@@ -13,7 +13,10 @@ from homeassistant.core import HomeAssistant
 from .catalog import refresh_catalog_for_all
 from .const import DOMAIN
 from .ha_utils import coerce_bool
-from .test_sensors import create_test_sensors_for_all
+from .test_sensors import (
+    create_test_sensors_for_all,
+    remove_test_resources_for_all,
+)
 from .panel_proxy import InferenciaPresenciaPanelProxyView
 
 LOGGER = logging.getLogger(__name__)
@@ -46,6 +49,7 @@ class InferenciaPresenciaStatusView(HomeAssistantView):
                     "available_entities_total": runtime["available_entities_total"],
                     "supported_entities_total": runtime["supported_entities_total"],
                     "available_entities": runtime["available_entities"],
+                    "available_areas": runtime.get("available_areas", []),
                     "recent_events": list(runtime["recent_events"]),
                     "sent_events": runtime["sent_events"],
                     "failed_events": runtime["failed_events"],
@@ -98,7 +102,7 @@ class InferenciaPresenciaActionsView(HomeAssistantView):
                 {"status": "ok", "action": action, "entries": results}
             )
         if action == "create_test_sensors":
-            results = await create_test_sensors_for_all(
+            report = await create_test_sensors_for_all(
                 self._hass,
                 self._domain_data,
                 rooms_raw=str(payload.get("rooms", "bedroom,kitchen,living")),
@@ -108,8 +112,15 @@ class InferenciaPresenciaActionsView(HomeAssistantView):
                 initial_state=str(payload.get("initial_state", "off")),
             )
             return web.json_response(
-                {"status": "ok", "action": action, "entries": results}
+                {"status": "ok", "action": action, **report}
             )
+        if action in {"remove_test_sensors", "remove_test_resources"}:
+            result = await remove_test_resources_for_all(
+                self._hass,
+                self._domain_data,
+                include_areas=action == "remove_test_resources",
+            )
+            return web.json_response({"action": action, **result})
         return web.json_response(
             {"status": "error", "error": f"accion no soportada: {action}"},
             status=400,

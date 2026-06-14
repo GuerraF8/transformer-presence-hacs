@@ -41,6 +41,15 @@ def test_normalizes_presence_and_absence() -> None:
     assert absent["inferred_presence"] is False
 
 
+def test_snapshot_without_active_profile_is_unavailable() -> None:
+    payload = snapshot(active_rooms=[])
+    payload["profile"] = {"available": False, "active_profile_id": None}
+
+    normalized = normalize_snapshot(payload)
+
+    assert normalized["service_available"] is False
+
+
 def test_event_response_updates_immediately_and_adds_new_room() -> None:
     previous = normalize_snapshot(snapshot(active_rooms=[]))
 
@@ -78,6 +87,23 @@ def test_ignored_event_only_updates_input_mode() -> None:
     assert updated is not None
     assert updated["active_rooms"] == ["kitchen"]
     assert updated["input_mode"] == "replay"
+
+
+def test_no_active_profile_marks_entities_unavailable_without_forcing_off() -> None:
+    previous = normalize_snapshot(snapshot(active_rooms=["kitchen"]))
+
+    updated = normalize_event_response(
+        {
+            "status": "ignored",
+            "reason": "no_active_profile",
+            "input_mode": "listen",
+        },
+        previous,
+    )
+
+    assert updated is not None
+    assert updated["service_available"] is False
+    assert updated["active_rooms"] == ["kitchen"]
 
 
 def test_unstructured_success_does_not_replace_last_state() -> None:

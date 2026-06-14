@@ -14,7 +14,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_STATE_CHANGED, Platform
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.area_registry import EVENT_AREA_REGISTRY_UPDATED
+from homeassistant.helpers.device_registry import EVENT_DEVICE_REGISTRY_UPDATED
+from homeassistant.helpers.entity_registry import EVENT_ENTITY_REGISTRY_UPDATED
 from homeassistant.helpers.typing import ConfigType
 
 from .actions import poll_backend_actions
@@ -36,11 +38,12 @@ from .const import (
 from .coordinator import PresenceDataUpdateCoordinator
 from .domain_data import ensure_domain_data
 from .event_forwarding import process_state_change
-from .ha_utils import DEFAULT_AUTO_DOMAINS, parse_tracked_entities
+from .ha_utils import parse_tracked_entities
 from .panel import register_panel
 from .runtime import IntegrationRuntime
 from .services import ensure_services, remove_services
 from .views import register_status_views
+from .test_sensors import assign_test_sensor_areas, load_test_resources
 
 LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
@@ -80,6 +83,7 @@ def _create_runtime(
         "last_push_at": None,
         "last_scan_at": None,
         "available_entities": [],
+        "available_areas": [],
         "available_entities_total": 0,
         "supported_entities_total": 0,
         "enabled_real_entities": set(),
@@ -87,6 +91,8 @@ def _create_runtime(
         "recent_events": deque(maxlen=MAX_RECENT_EVENTS),
         "sent_events": 0,
         "failed_events": 0,
+        "registry_unsubs": [],
+        "catalog_refresh_task": None,
     }
 
 
@@ -114,11 +120,6 @@ def _subscribe_state_events(
         if new_state.attributes.get("inferencia_presencia_output") is True:
             return
         entity_id = new_state.entity_id.lower()
-        if runtime["auto_discovery"]:
-            if entity_id.split(".", 1)[0] not in DEFAULT_AUTO_DOMAINS:
-                return
-        elif entity_id not in runtime["tracked_entities"]:
-            return
         if entity_id not in runtime.get("enabled_real_entities", set()):
             return
         hass.async_create_task(
@@ -130,13 +131,40 @@ def _subscribe_state_events(
             )
         )
 
-    if runtime["auto_discovery"]:
-        return hass.bus.async_listen(EVENT_STATE_CHANGED, handle_state_event)
-    return async_track_state_change_event(
-        hass,
-        list(runtime["tracked_entities"]),
-        handle_state_event,
-    )
+    return hass.bus.async_listen(EVENT_STATE_CHANGED, handle_state_event)
+
+
+def _subscribe_registry_events(
+    hass: HomeAssistant,
+    runtime: IntegrationRuntime,
+) -> list[Any]:
+    @callback
+    def schedule_catalog_refresh(_event: Event) -> None:
+        current = runtime.get("catalog_refresh_task")
+        if current and not current.done():
+            current.cancel()
+
+        async def delayed_refresh() -> None:
+            await asyncio.sleep(1)
+            await publish_entity_catalog(
+                hass,
+                runtime,
+                source="ha_registry_update",
+            )
+            await sync_real_sensor_selection(runtime)
+
+        runtime["catalog_refresh_task"] = hass.async_create_task(
+            delayed_refresh()
+        )
+
+    return [
+        hass.bus.async_listen(event_type, schedule_catalog_refresh)
+        for event_type in (
+            EVENT_AREA_REGISTRY_UPDATED,
+            EVENT_DEVICE_REGISTRY_UPDATED,
+            EVENT_ENTITY_REGISTRY_UPDATED,
+        )
+    ]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -162,8 +190,11 @@ async def async_setup_entry(
     domain_data["entries"][entry.entry_id] = runtime
     domain_data["panel_tokens"][runtime["panel_token"]] = runtime
 
+    if domain_data.get("test_resource_store") is None:
+        await load_test_resources(hass, domain_data)
     await runtime["coordinator"].async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await assign_test_sensor_areas(hass, domain_data)
     await publish_entity_catalog(hass, runtime, source="ha_startup_scan")
     try:
         await sync_real_sensor_selection(runtime)
@@ -180,6 +211,7 @@ async def async_setup_entry(
         f"{DOMAIN}_action_poll",
     )
     runtime["unsub"] = _subscribe_state_events(hass, runtime)
+    runtime["registry_unsubs"] = _subscribe_registry_events(hass, runtime)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     register_panel(
         hass,
@@ -215,6 +247,14 @@ async def async_unload_entry(
         domain_data["panel_tokens"].pop(runtime["panel_token"], None)
     if runtime and runtime.get("unsub"):
         runtime["unsub"]()
+    if runtime:
+        for unsub in runtime.get("registry_unsubs", []):
+            unsub()
+        refresh_task = runtime.get("catalog_refresh_task")
+        if refresh_task and not refresh_task.done():
+            refresh_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await refresh_task
     if runtime and runtime.get("action_poll_task"):
         task = runtime["action_poll_task"]
         task.cancel()

@@ -25,6 +25,7 @@ class IntegrationRuntime(TypedDict):
     last_push_at: str | None
     last_scan_at: str | None
     available_entities: list[dict[str, Any]]
+    available_areas: list[dict[str, Any]]
     available_entities_total: int
     supported_entities_total: int
     enabled_real_entities: set[str]
@@ -33,3 +34,5 @@ class IntegrationRuntime(TypedDict):
     sent_events: int
     failed_events: int
     coordinator: NotRequired[DataUpdateCoordinator]
+    registry_unsubs: list[Any]
+    catalog_refresh_task: Any

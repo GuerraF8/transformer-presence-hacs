@@ -45,5 +45,7 @@ class PresenceCoordinatorEntity(CoordinatorEntity):
             "input_mode": data.get("input_mode", "unknown"),
             "confidence": data.get("confidence"),
             "model": data.get("model", "unknown"),
+            "profile_id": data.get("profile_id"),
+            "profile_name": data.get("profile_name"),
             "updated_at": data.get("updated_at"),
         }

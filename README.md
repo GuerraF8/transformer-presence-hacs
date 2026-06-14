@@ -4,8 +4,9 @@ Integracion custom de Home Assistant para conectar sensores y eventos de estado 
 
 La integracion registra un panel en la barra lateral, publica el catalogo de entidades disponibles al backend, escucha cambios de estado y reenvia eventos normalizados para inferencia de presencia.
 
-La version `1.3.0` incorpora un proxy HTTP/WebSocket para publicar el panel por
-el mismo origen que Home Assistant. Consulta [ARCHITECTURE.md](ARCHITECTURE.md).
+La version `1.4.0` publica areas y entidades del registro oficial de Home
+Assistant, y administra recursos de prueba aislados. Consulta
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Requisitos
 
@@ -47,7 +48,9 @@ Campos disponibles:
 - `URL interna del backend para Home Assistant`: URL HTTP/HTTPS que Home Assistant Core puede alcanzar. Ejemplo: `http://192.168.1.50:8081`.
 - `URL publica HTTPS del panel`: opcional. Solo se usa como acceso directo cuando comienza con `https://`.
 - `Modo desarrollador`: desactivado por defecto. Al activarlo, el panel muestra las herramientas de Replay y el acceso al Simulador.
-- `Entidades a escuchar`: lista opcional separada por comas. Si queda vacia, la integracion escucha automaticamente dominios comunes como `binary_sensor`, `sensor`, `person`, `device_tracker`, `input_boolean`, `switch`, `cover` y `lock`.
+- `Entidades a escuchar`: lista opcional separada por comas usada durante la
+  configuracion inicial. El perfil activo determina finalmente que entidades
+  se reenvian, sin restringirlas por dominio.
 
 La URL interna se usa para publicar eventos, catalogo y heartbeat. Si la URL
 publica queda vacia o usa HTTP, Home Assistant publica el panel mediante un
@@ -123,15 +126,22 @@ La integracion registra estos servicios:
 - `inferencia_presencia.iniciar_replay_historico`
 - `inferencia_presencia.refrescar_catalogo_sensores`
 - `inferencia_presencia.crear_sensores_prueba`
+- `inferencia_presencia.eliminar_sensores_prueba`
+- `inferencia_presencia.eliminar_recursos_prueba`
 
 ## Seguridad y entidades reales
 
 La integracion separa el catalogo de entidades del envio de eventos:
 
-- Puede publicar al backend un catalogo amplio para que el usuario seleccione sensores.
+- Publica todas las entidades y areas, incluyendo el area directa de la entidad
+  o la heredada desde su dispositivo.
 - Solo envia cambios de estado de entidades que el backend ya marco como `enabled_entities`.
 - Antes de enviar, cruza esa lista con el catalogo local de esta instancia de Home Assistant para evitar entradas antiguas o de otra maquina.
-- Los sensores de prueba se crean como `switch.inferencia_*_test` con `unique_id` propio.
+- Los sensores de prueba se crean como `switch.inferencia_*_test` dentro de
+  areas `Inferencia prueba · <habitacion>`.
+- Los IDs propios se guardan con `homeassistant.helpers.storage.Store`. La
+  eliminacion nunca borra sensores ajenos y conserva un area que contenga
+  cualquier entidad o dispositivo no creado por la integracion.
 - La integracion no modifica entidades existentes de otros dominios ni requiere cambios en `configuration.yaml`.
 
 Esto evita que una instalacion con sensores reales llamados igual que los sensores del historico CSV empiece a alimentar inferencia sin confirmacion explicita en el panel del backend.

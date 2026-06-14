@@ -112,3 +112,13 @@ crear_sensores_prueba:
           options:
             - off
             - on
+
+eliminar_sensores_prueba:
+  name: Eliminar sensores de prueba
+  description: Elimina solo los sensores creados y registrados como propios de la integracion.
+  fields: {}
+
+eliminar_recursos_prueba:
+  name: Eliminar sensores y areas de prueba
+  description: Elimina los sensores propios y las areas de prueba vacias; conserva cualquier area con recursos ajenos.
+  fields: {}

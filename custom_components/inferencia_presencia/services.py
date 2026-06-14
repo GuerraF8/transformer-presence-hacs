@@ -15,12 +15,17 @@ from .catalog import refresh_catalog_for_all
 from .const import (
     DOMAIN,
     SERVICE_CREATE_TEST_SENSORS,
+    SERVICE_REMOVE_TEST_RESOURCES,
+    SERVICE_REMOVE_TEST_SENSORS,
     SERVICE_EMIT_TEST_EVENT,
     SERVICE_REFRESH_SENSOR_CATALOG,
     SERVICE_START_FULL_REPLAY,
 )
 from .ha_utils import coerce_bool
-from .test_sensors import create_test_sensors_for_all
+from .test_sensors import (
+    create_test_sensors_for_all,
+    remove_test_resources_for_all,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +73,8 @@ async def ensure_services(
         SERVICE_START_FULL_REPLAY,
         SERVICE_REFRESH_SENSOR_CATALOG,
         SERVICE_CREATE_TEST_SENSORS,
+        SERVICE_REMOVE_TEST_SENSORS,
+        SERVICE_REMOVE_TEST_RESOURCES,
     ]
     if all(hass.services.has_service(DOMAIN, name) for name in service_names):
         domain_data["services_registered"] = True
@@ -152,6 +159,20 @@ async def ensure_services(
             initial_state=str(call.data.get("initial_state", "off")),
         )
 
+    async def remove_test_sensors(_call: ServiceCall) -> None:
+        await remove_test_resources_for_all(
+            hass,
+            domain_data,
+            include_areas=False,
+        )
+
+    async def remove_test_resources(_call: ServiceCall) -> None:
+        await remove_test_resources_for_all(
+            hass,
+            domain_data,
+            include_areas=True,
+        )
+
     try:
         hass.services.async_register(
             DOMAIN, SERVICE_EMIT_TEST_EVENT, emit_test_event, schema=TEST_EVENT_SCHEMA
@@ -174,6 +195,18 @@ async def ensure_services(
             create_test_sensors,
             schema=CREATE_TEST_SENSORS_SCHEMA,
         )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_REMOVE_TEST_SENSORS,
+            remove_test_sensors,
+            schema=vol.Schema({}),
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_REMOVE_TEST_RESOURCES,
+            remove_test_resources,
+            schema=vol.Schema({}),
+        )
     except Exception as err:  # noqa: BLE001
         LOGGER.error("No se pudo registrar servicios de %s: %s", DOMAIN, err)
         return
@@ -186,6 +219,8 @@ def remove_services(hass: HomeAssistant) -> None:
         SERVICE_START_FULL_REPLAY,
         SERVICE_REFRESH_SENSOR_CATALOG,
         SERVICE_CREATE_TEST_SENSORS,
+        SERVICE_REMOVE_TEST_SENSORS,
+        SERVICE_REMOVE_TEST_RESOURCES,
     ):
         if hass.services.has_service(DOMAIN, service_name):
             hass.services.async_remove(DOMAIN, service_name)
