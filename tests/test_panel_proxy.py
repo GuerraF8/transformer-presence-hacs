@@ -64,6 +64,7 @@ def test_proxy_target_is_bound_to_configured_backend() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.enable_socket
 async def test_proxy_forwards_http_and_rewrites_swagger_path() -> None:
     async def index(_request):
         return web.Response(
@@ -138,6 +139,7 @@ async def test_proxy_forwards_http_and_rewrites_swagger_path() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.enable_socket
 async def test_proxy_forwards_websocket_messages() -> None:
     async def websocket_echo(request):
         socket = web.WebSocketResponse()
