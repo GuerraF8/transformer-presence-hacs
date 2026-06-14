@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -10,6 +11,37 @@ from .ha_utils import build_url
 from .runtime import IntegrationRuntime
 
 LOGGER = logging.getLogger(__name__)
+
+
+class BackendConnectionError(RuntimeError):
+    """Indica que Home Assistant no puede alcanzar el backend configurado."""
+
+
+async def validate_backend_connection(
+    session: aiohttp.ClientSession,
+    backend_url: str,
+    timeout_seconds: float = 8,
+) -> None:
+    endpoint = build_url(backend_url, "/api/health")
+    timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+    try:
+        async with session.get(endpoint, timeout=timeout) as response:
+            body = await response.text()
+            if response.status >= 400:
+                raise BackendConnectionError(
+                    f"Backend retorno {response.status} para /api/health"
+                )
+            payload = json.loads(body)
+            if not isinstance(payload, dict) or payload.get("status") != "ok":
+                raise BackendConnectionError(
+                    "El backend no devolvio un estado de salud valido"
+                )
+    except BackendConnectionError:
+        raise
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        raise BackendConnectionError(
+            f"No fue posible conectar con {endpoint}: {err}"
+        ) from err
 
 
 async def post_json(

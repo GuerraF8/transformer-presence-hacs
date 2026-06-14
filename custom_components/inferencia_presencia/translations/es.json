@@ -12,8 +12,16 @@
         }
       }
     },
+    "error": {
+      "cannot_connect": "Home Assistant no puede alcanzar /api/health en la URL indicada. Si el backend esta en otro equipo, usa su IP de red; 127.0.0.1 apunta a Home Assistant."
+    },
     "abort": {
       "already_configured": "La integracion ya fue configurada."
+    }
+  },
+  "options": {
+    "error": {
+      "cannot_connect": "Home Assistant no puede alcanzar /api/health en la URL indicada. Si el backend esta en otro equipo, usa su IP de red; 127.0.0.1 apunta a Home Assistant."
     }
   },
   "entity": {
