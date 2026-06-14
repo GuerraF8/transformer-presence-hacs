@@ -14,6 +14,7 @@ from .catalog import refresh_catalog_for_all
 from .const import DOMAIN
 from .ha_utils import coerce_bool
 from .test_sensors import create_test_sensors_for_all
+from .panel_proxy import InferenciaPresenciaPanelProxyView
 
 LOGGER = logging.getLogger(__name__)
 
@@ -129,6 +130,7 @@ def register_status_views(
     try:
         hass.http.register_view(InferenciaPresenciaStatusView(domain_data))
         hass.http.register_view(InferenciaPresenciaActionsView(hass, domain_data))
+        hass.http.register_view(InferenciaPresenciaPanelProxyView(domain_data))
     except Exception as err:  # noqa: BLE001
         LOGGER.error("No se pudo registrar vista de estado de %s: %s", DOMAIN, err)
         return

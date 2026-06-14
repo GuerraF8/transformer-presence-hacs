@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 from collections import deque
 from contextlib import suppress
 from typing import Any
@@ -66,6 +67,7 @@ def _create_runtime(
         "panel_base_url": str(
             _entry_value(entry, CONF_PANEL_URL, DEFAULT_PANEL_URL)
         ).strip(),
+        "panel_token": secrets.token_urlsafe(32),
         "dev_mode": bool(_entry_value(entry, CONF_DEV_MODE, DEFAULT_DEV_MODE)),
         "tracked_entities": tracked_entities,
         "auto_discovery": not tracked_entities,
@@ -158,6 +160,7 @@ async def async_setup_entry(
     )
     entry.runtime_data = runtime
     domain_data["entries"][entry.entry_id] = runtime
+    domain_data["panel_tokens"][runtime["panel_token"]] = runtime
 
     await runtime["coordinator"].async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -184,6 +187,7 @@ async def async_setup_entry(
         runtime["backend_url"],
         runtime["panel_base_url"],
         runtime["dev_mode"],
+        runtime["panel_token"],
     )
     LOGGER.info(
         "Integracion %s iniciada. Backend: %s | auto_discovery=%s | tracked=%s",
@@ -207,6 +211,8 @@ async def async_unload_entry(
 ) -> bool:
     domain_data = ensure_domain_data(hass)
     runtime = domain_data["entries"].pop(entry.entry_id, None)
+    if runtime:
+        domain_data["panel_tokens"].pop(runtime["panel_token"], None)
     if runtime and runtime.get("unsub"):
         runtime["unsub"]()
     if runtime and runtime.get("action_poll_task"):
@@ -224,6 +230,7 @@ async def async_unload_entry(
             first_runtime["backend_url"],
             first_runtime.get("panel_base_url", ""),
             first_runtime.get("dev_mode", DEFAULT_DEV_MODE),
+            first_runtime["panel_token"],
         )
         return True
 

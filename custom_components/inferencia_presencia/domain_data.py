@@ -13,6 +13,7 @@ DOMAIN_DEFAULTS: dict[str, Any] = {
     "services_registered": False,
     "panel_registered": False,
     "panel_url": None,
+    "panel_tokens": {},
     "status_view_registered": False,
     "test_sensors": {},
     "test_switch_adders": {},

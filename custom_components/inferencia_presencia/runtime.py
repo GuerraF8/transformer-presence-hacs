@@ -12,6 +12,7 @@ class IntegrationRuntime(TypedDict):
     entry_id: str
     backend_url: str
     panel_base_url: str
+    panel_token: str
     dev_mode: bool
     tracked_entities: set[str]
     auto_discovery: bool

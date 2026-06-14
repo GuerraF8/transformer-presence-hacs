@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 DOMAIN = "inferencia_presencia"
-INTEGRATION_VERSION = "1.2.1"
+INTEGRATION_VERSION = "1.3.0"
 
 CONF_INFERENCE_API_URL = "inference_api_url"
 DEFAULT_INFERENCE_API_URL = "http://127.0.0.1:8081"

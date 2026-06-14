@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import PANEL_ICON, PANEL_TITLE, PANEL_URL_PATH
 from .ha_utils import resolve_panel_url
+from .panel_proxy import panel_uses_proxy, proxy_panel_url
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,8 +22,14 @@ def register_panel(
     backend_url: str,
     panel_base_url: str,
     dev_mode: bool,
+    panel_token: str,
 ) -> None:
-    panel_url = resolve_panel_url(panel_base_url, backend_url, dev_mode)
+    source_url = panel_base_url or backend_url
+    panel_url = (
+        proxy_panel_url(panel_token, source_url, dev_mode)
+        if panel_uses_proxy(panel_base_url)
+        else resolve_panel_url(panel_base_url, backend_url, dev_mode)
+    )
     if domain_data.get("panel_registered") and domain_data.get("panel_url") == panel_url:
         return
     try:

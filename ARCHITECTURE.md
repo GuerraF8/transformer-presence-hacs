@@ -7,7 +7,8 @@
 sincroniza entidades; `actions.py` ejecuta solicitudes del backend;
 `event_forwarding.py` normaliza cambios de estado; `services.py` registra los
 servicios; `views.py` contiene las vistas HTTP; `test_sensors.py` administra
-sensores de prueba y `panel.py` administra el iframe.
+sensores de prueba, `panel.py` administra el iframe y `panel_proxy.py` publica
+HTTP y WebSocket mediante el mismo origen de Home Assistant.
 
 Las plataformas `binary_sensor`, `sensor` y `switch` permanecen independientes.
 El `PresenceDataUpdateCoordinator` conserva el estado normalizado y notifica a

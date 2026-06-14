@@ -4,14 +4,14 @@ Integracion custom de Home Assistant para conectar sensores y eventos de estado 
 
 La integracion registra un panel en la barra lateral, publica el catalogo de entidades disponibles al backend, escucha cambios de estado y reenvia eventos normalizados para inferencia de presencia.
 
-La version `1.2.1` separa ciclo de vida, runtime tipado, cliente HTTP, utilidades
-y registro del panel. Consulta [ARCHITECTURE.md](ARCHITECTURE.md).
+La version `1.3.0` incorpora un proxy HTTP/WebSocket para publicar el panel por
+el mismo origen que Home Assistant. Consulta [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Requisitos
 
-- Home Assistant con HACS instalado.
+- Home Assistant 2026.1.0 o posterior con HACS instalado.
 - Backend Transformer Presence ejecutandose en Docker.
-- Una URL del backend alcanzable desde Home Assistant y desde el navegador donde se abre el panel.
+- Una URL del backend alcanzable desde Home Assistant Core.
 
 Ejemplo de URL:
 
@@ -19,7 +19,9 @@ Ejemplo de URL:
 http://192.168.1.50:8081
 ```
 
-Si usas Tailscale, usa la IP o nombre Tailscale del equipo que ejecuta Docker. Evita `127.0.0.1` salvo que Home Assistant, el navegador y el backend esten realmente en el mismo host y red.
+Si usas Tailscale, usa la IP o nombre Tailscale del equipo que ejecuta Docker.
+Evita `127.0.0.1` salvo que Home Assistant Core y el backend esten en el mismo
+host o contenedor de red.
 
 ## Instalacion con HACS
 
@@ -43,21 +45,27 @@ https://github.com/GuerraF8/transformer-presence-hacs
 Campos disponibles:
 
 - `URL interna del backend para Home Assistant`: URL HTTP/HTTPS que Home Assistant Core puede alcanzar. Ejemplo: `http://192.168.1.50:8081`.
-- `URL publica del panel para el navegador`: opcional. Usala cuando abres Home Assistant remotamente y el navegador necesita otra ruta hacia el backend. Ejemplo: `http://100.68.121.126:8081`.
+- `URL publica HTTPS del panel`: opcional. Solo se usa como acceso directo cuando comienza con `https://`.
 - `Modo desarrollador`: desactivado por defecto. Al activarlo, el panel muestra las herramientas de Replay y el acceso al Simulador.
 - `Entidades a escuchar`: lista opcional separada por comas. Si queda vacia, la integracion escucha automaticamente dominios comunes como `binary_sensor`, `sensor`, `person`, `device_tracker`, `input_boolean`, `switch`, `cover` y `lock`.
 
-La URL interna se usa para publicar eventos, catalogo y heartbeat desde Home Assistant hacia el backend. La URL publica se usa solo para registrar el panel iframe en la barra lateral. Si dejas la URL publica vacia, el panel usa la URL interna.
+La URL interna se usa para publicar eventos, catalogo y heartbeat. Si la URL
+publica queda vacia o usa HTTP, Home Assistant publica el panel mediante un
+proxy relativo con token. Esto evita contenido mixto cuando la interfaz se abre
+por HTTPS mediante Home Assistant Cloud o Nabu Casa. Una URL publica HTTPS se
+mantiene como acceso directo.
 
-El panel registrado agrega los parametros `embedded=1` y `dev=0|1` sin eliminar parametros existentes de la URL publica. Abrir el backend directamente mantiene visibles las herramientas de desarrollo.
+El panel registrado agrega los parametros `embedded=1` y `dev=0|1` sin eliminar
+parametros existentes. El proxy reenvia REST y WebSocket al backend configurado,
+sin aceptar destinos proporcionados por el navegador.
 
-La configuracion se guarda en la entrada de Home Assistant y puede cambiarse desde las opciones de la integracion. No se usa `backend_url.override` ni scripts SSH para configurar una instalacion HACS.
+La configuracion se guarda en la entrada de Home Assistant y puede cambiarse desde las opciones de la integracion.
 
-Ejemplo con Home Assistant en LAN y acceso remoto por Tailscale:
+Ejemplo con Home Assistant en LAN y acceso remoto por Nabu Casa:
 
 ```text
 URL interna del backend para Home Assistant: http://192.168.0.221:8081
-URL publica del panel para el navegador:     http://100.68.121.126:8081
+URL publica HTTPS del panel:                 (vacia)
 ```
 
 ## Entidades para automatizaciones

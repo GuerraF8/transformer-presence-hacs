@@ -3,10 +3,10 @@
     "step": {
       "user": {
         "title": "Bridge de inferencia de presencia",
-        "description": "Conecta Home Assistant al backend externo de inferencia. Si Home Assistant y tu navegador remoto usan rutas distintas, usa una URL interna para la API y una URL publica para el panel.",
+        "description": "Conecta Home Assistant al backend externo. El panel usa automaticamente el origen HTTPS de Home Assistant; una URL publica HTTPS es opcional.",
         "data": {
           "inference_api_url": "URL interna del backend para Home Assistant",
-          "panel_url": "URL publica del panel para el navegador",
+          "panel_url": "URL publica HTTPS del panel (opcional)",
           "dev_mode": "Modo desarrollador (muestra Replay y Simulador)",
           "sensor_entities": "Entidades disponibles para catalogo (coma separadas, vacio = auto; los eventos solo se envian si el backend las confirma)"
         }
