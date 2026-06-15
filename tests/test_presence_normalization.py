@@ -41,6 +41,20 @@ def test_normalizes_presence_and_absence() -> None:
     assert absent["inferred_presence"] is False
 
 
+def test_confirmation_response_does_not_replace_presence_state() -> None:
+    previous = normalize_snapshot(snapshot(active_rooms=["kitchen"]))
+    result = normalize_event_response(
+        {
+            "status": "recorded",
+            "reason": "training_confirmation",
+            "training_role": "person_confirmation",
+            "input_mode": "listen",
+        },
+        previous,
+    )
+    assert result is None
+
+
 def test_snapshot_without_active_profile_is_unavailable() -> None:
     payload = snapshot(active_rooms=[])
     payload["profile"] = {"available": False, "active_profile_id": None}
