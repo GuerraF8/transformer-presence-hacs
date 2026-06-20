@@ -23,8 +23,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
       - run: python -m pip install -r requirements_test.txt
-      - run: python -m pytest
+      - name: Run tests with coverage
+        run: python -m pytest --cov=custom_components.inferencia_presencia --cov-report=term-missing --cov-report=xml
+      - name: Enforce global coverage floor
+        run: python -m coverage report --fail-under=90
+      - name: Enforce critical coverage
+        run: python -m coverage report --fail-under=90.01
+      - name: Enforce changed-lines coverage
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_ref="origin/${{ github.base_ref }}"
+          else
+            base_ref="HEAD^"
+          fi
+          diff-cover coverage.xml --compare-branch="$base_ref" --fail-under=90.01
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hacs-coverage
+          path: coverage.xml
+          if-no-files-found: warn

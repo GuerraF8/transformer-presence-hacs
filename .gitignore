@@ -4,3 +4,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .DS_Store
+.coverage
+coverage.json
+coverage.xml
+htmlcov/
