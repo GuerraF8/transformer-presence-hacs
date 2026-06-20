@@ -11,6 +11,14 @@ def room_slug(value: str) -> str:
     return re.sub(r"_+", "_", slug).strip("_") or "desconocida"
 
 
+def room_display_name(value: str) -> str:
+    normalized = str(value or "").strip().replace("_", " ")
+    display_name = " ".join(
+        part.capitalize() for part in normalized.split()
+    )
+    return display_name or "Desconocida"
+
+
 def _rooms(value: Any) -> list[str]:
     if not isinstance(value, (list, tuple, set)):
         return []
@@ -20,6 +28,26 @@ def _rooms(value: Any) -> list[str]:
         if room and room not in result:
             result.append(room)
     return result
+
+
+def _room_labels(value: Any, rooms: list[str]) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    known_rooms = set(rooms)
+    result: dict[str, str] = {}
+    for raw_room, raw_label in value.items():
+        room = str(raw_room or "").strip().lower()
+        label = str(raw_label or "").strip()
+        if room and room in known_rooms and label:
+            result[room] = label
+    return result
+
+
+def _optional_integer(value: Any) -> int | None:
+    try:
+        return max(0, int(value)) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _integer(value: Any, fallback: int = 0) -> int:
@@ -58,6 +86,9 @@ def unavailable_presence_data() -> dict[str, Any]:
         "updated_at": None,
         "input_mode": "unknown",
         "model": "unknown",
+        "room_labels": {},
+        "layout_version": None,
+        "layout_source": "unknown",
         "service_available": False,
         "consecutive_failures": 0,
     }
@@ -78,11 +109,21 @@ def normalize_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
     model = model if isinstance(model, dict) else {}
     profile = payload.get("profile")
     profile = profile if isinstance(profile, dict) else {}
+    layout_reference = payload.get("layout_reference")
+    layout_reference = (
+        layout_reference if isinstance(layout_reference, dict) else {}
+    )
     events = payload.get("events")
     latest_event = events[-1] if isinstance(events, list) and events else {}
     latest_event = latest_event if isinstance(latest_event, dict) else {}
 
     rooms = _rooms(payload.get("rooms"))
+    profile_room_labels = _room_labels(profile.get("room_labels"), rooms)
+    layout_room_labels = _room_labels(
+        layout_reference.get("room_labels"),
+        rooms,
+    )
+    room_labels = {**profile_room_labels, **layout_room_labels}
     active_rooms = _rooms(presence.get("active_rooms"))
     inferred_presence = _presence_bool(
         presence.get("inferred_presence"),
@@ -117,6 +158,11 @@ def normalize_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
         "updated_at": presence.get("updated_at") or latest_event.get("timestamp"),
         "input_mode": input_mode,
         "model": model_name,
+        "room_labels": room_labels,
+        "layout_version": _optional_integer(layout_reference.get("version")),
+        "layout_source": str(
+            layout_reference.get("source") or "unknown"
+        ).strip().lower(),
         "profile_id": profile.get("active_profile_id"),
         "profile_name": profile.get("name"),
         "profile_revision": profile.get("revision"),

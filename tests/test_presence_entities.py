@@ -77,6 +77,8 @@ async def test_dynamic_rooms_and_removed_room_availability(hass) -> None:
             snapshot(
                 rooms=["bedroom", "kitchen", "office"],
                 active_rooms=["office"],
+                room_labels={"office": "Oficina principal"},
+                layout_version=4,
             )
         )
     )
@@ -89,6 +91,28 @@ async def test_dynamic_rooms_and_removed_room_availability(hass) -> None:
     )
     assert office.is_on is True
     assert office.available is True
+    assert office.name == "Ocupación en Oficina principal"
+    assert office._attr_unique_id == "entry-1_room_office"
+    assert office._attr_suggested_object_id == "inferencia_presencia_office"
+    assert office.extra_state_attributes["room_slug"] == "office"
+    assert office.extra_state_attributes["room_name"] == "Oficina principal"
+    assert office.extra_state_attributes["layout_version"] == 4
+    initial_entity_count = len(added)
+
+    coordinator.async_set_updated_data(
+        normalize_snapshot(
+            snapshot(
+                rooms=["bedroom", "kitchen", "office"],
+                active_rooms=["office"],
+                room_labels={"office": "Estudio"},
+                layout_version=5,
+            )
+        )
+    )
+    assert office.name == "Ocupación en Estudio"
+    assert office.extra_state_attributes["room_name"] == "Estudio"
+    assert office.extra_state_attributes["layout_version"] == 5
+    assert len(added) == initial_entity_count
 
     coordinator.async_set_updated_data(
         normalize_snapshot(
@@ -96,6 +120,49 @@ async def test_dynamic_rooms_and_removed_room_availability(hass) -> None:
         )
     )
     assert office.available is False
+
+    coordinator.async_set_updated_data(
+        normalize_snapshot(
+            snapshot(
+                rooms=["bedroom", "kitchen", "office"],
+                active_rooms=[],
+                room_labels={"office": "Estudio"},
+                layout_version=7,
+            )
+        )
+    )
+    assert office.available is True
+    assert len(added) == initial_entity_count
+
+
+async def test_room_entity_label_fallback_and_duplicate_display_names(hass) -> None:
+    async def fetch_snapshot() -> dict:
+        return snapshot(active_rooms=[])
+
+    coordinator = PresenceDataUpdateCoordinator(hass, fetch_snapshot)
+    coordinator.async_set_updated_data(
+        normalize_snapshot(
+            snapshot(
+                rooms=["home_office", "office_2"],
+                room_labels={"office_2": "Home office"},
+            )
+        )
+    )
+    entry = FakeConfigEntry({"coordinator": coordinator})
+
+    home_office = RoomOccupancyBinarySensor(
+        coordinator,
+        entry,
+        "home_office",
+    )
+    office_2 = RoomOccupancyBinarySensor(coordinator, entry, "office_2")
+
+    assert home_office.name == "Ocupación en Home Office"
+    assert office_2.name == "Ocupación en Home office"
+    assert home_office._attr_unique_id != office_2._attr_unique_id
+    assert home_office._attr_suggested_object_id == (
+        "inferencia_presencia_home_office"
+    )
 
 
 async def test_three_failures_then_recovery(hass) -> None:

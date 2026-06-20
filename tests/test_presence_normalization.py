@@ -12,8 +12,12 @@ def snapshot(
     rooms: list[str] | None = None,
     active_rooms: list[str] | None = None,
     input_mode: str = "listen",
+    room_labels: dict[str, str] | None = None,
+    profile_room_labels: dict[str, str] | None = None,
+    layout_version: int = 1,
+    layout_source: str = "profile",
 ) -> dict:
-    return {
+    payload = {
         "rooms": rooms or ["bedroom", "kitchen"],
         "meta": {
             "input_mode": input_mode,
@@ -28,6 +32,18 @@ def snapshot(
             "updated_at": "2026-06-06T12:00:00+00:00",
         },
     }
+    payload["layout_reference"] = {
+        "version": layout_version,
+        "source": layout_source,
+        "room_labels": room_labels or {},
+    }
+    if profile_room_labels is not None:
+        payload["profile"] = {
+            "available": True,
+            "active_profile_id": "profile-1",
+            "room_labels": profile_room_labels,
+        }
+    return payload
 
 
 def test_normalizes_presence_and_absence() -> None:
@@ -39,6 +55,34 @@ def test_normalizes_presence_and_absence() -> None:
     assert occupied["people_estimate"] == 1
     assert absent["current_room"] == NO_PRESENCE
     assert absent["inferred_presence"] is False
+
+
+def test_normalizes_layout_labels_with_profile_fallback() -> None:
+    normalized = normalize_snapshot(
+        snapshot(
+            rooms=["kitchen", "home_office", "hall"],
+            room_labels={
+                "kitchen": "Cocina principal",
+                "hall": "",
+                "removed": "Ignorada",
+            },
+            profile_room_labels={
+                "kitchen": "Cocina antigua",
+                "home_office": "Oficina",
+                "hall": "Pasillo",
+            },
+            layout_version=7,
+            layout_source="profile",
+        )
+    )
+
+    assert normalized["room_labels"] == {
+        "kitchen": "Cocina principal",
+        "home_office": "Oficina",
+        "hall": "Pasillo",
+    }
+    assert normalized["layout_version"] == 7
+    assert normalized["layout_source"] == "profile"
 
 
 def test_confirmation_response_does_not_replace_presence_state() -> None:
