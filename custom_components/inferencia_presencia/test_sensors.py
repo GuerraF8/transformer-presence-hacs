@@ -108,12 +108,18 @@ async def assign_test_sensor_areas(
     domain_data: dict[str, Any],
 ) -> None:
     registry = er.async_get(hass)
-    await hass.async_block_till_done()
-    for entity_id, item in domain_data.get("test_sensors", {}).items():
-        area_id = str(item.get("area_id") or "")
-        entry = registry.async_get(entity_id)
-        if entry and area_id and entry.area_id != area_id:
-            registry.async_update_entity(entity_id, area_id=area_id)
+    for attempt in range(3):
+        pending = False
+        for entity_id, item in domain_data.get("test_sensors", {}).items():
+            area_id = str(item.get("area_id") or "")
+            entry = registry.async_get(entity_id)
+            if entry and area_id and entry.area_id != area_id:
+                registry.async_update_entity(entity_id, area_id=area_id)
+            elif area_id and entry is None:
+                pending = True
+        if not pending or attempt == 2:
+            return
+        await asyncio.sleep(0)
 
 
 async def create_test_sensors_for_all(

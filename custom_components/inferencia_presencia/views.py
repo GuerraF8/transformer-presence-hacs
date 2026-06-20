@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from aiohttp import web
@@ -20,6 +21,20 @@ from .test_sensors import (
 from .panel_proxy import InferenciaPresenciaPanelProxyView
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _view_url_registered(hass: HomeAssistant, url: str) -> bool:
+    http = getattr(hass, "http", None)
+    app = getattr(http, "app", None)
+    router = getattr(app, "router", None)
+    if router is None:
+        return False
+    canonical_url = re.sub(r"{([^}:]+):[^}]+}", r"{\1}", url)
+    return any(
+        getattr(getattr(route, "resource", None), "canonical", None)
+        == canonical_url
+        for route in router.routes()
+    )
 
 
 class InferenciaPresenciaStatusView(HomeAssistantView):
@@ -138,11 +153,25 @@ def register_status_views(
             DOMAIN,
         )
         return
-    try:
-        hass.http.register_view(InferenciaPresenciaStatusView(domain_data))
-        hass.http.register_view(InferenciaPresenciaActionsView(hass, domain_data))
-        hass.http.register_view(InferenciaPresenciaPanelProxyView(domain_data))
-    except Exception as err:  # noqa: BLE001
-        LOGGER.error("No se pudo registrar vista de estado de %s: %s", DOMAIN, err)
-        return
+    views = (
+        InferenciaPresenciaStatusView(domain_data),
+        InferenciaPresenciaActionsView(hass, domain_data),
+        InferenciaPresenciaPanelProxyView(domain_data),
+    )
+    for view in views:
+        if _view_url_registered(hass, view.url):
+            continue
+        try:
+            hass.http.register_view(view)
+        except Exception as err:  # noqa: BLE001
+            if "already has" in str(err):
+                LOGGER.debug("Vista %s ya registrada", view.url)
+                continue
+            LOGGER.error(
+                "No se pudo registrar vista %s de %s: %s",
+                view.url,
+                DOMAIN,
+                err,
+            )
+            return
     domain_data["status_view_registered"] = True

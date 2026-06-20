@@ -110,8 +110,8 @@ crear_sensores_prueba:
       selector:
         select:
           options:
-            - off
-            - on
+            - "off"
+            - "on"
 
 eliminar_sensores_prueba:
   name: Eliminar sensores de prueba

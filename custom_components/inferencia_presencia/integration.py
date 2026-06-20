@@ -168,7 +168,9 @@ def _subscribe_registry_events(
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    ensure_domain_data(hass)
+    domain_data = ensure_domain_data(hass)
+    register_status_views(hass, domain_data)
+    await ensure_services(hass, domain_data)
     return True
 
 
@@ -187,15 +189,27 @@ async def async_setup_entry(
         hass, fetch_presence_snapshot
     )
     entry.runtime_data = runtime
+    previous_runtime = domain_data["entries"].get(entry.entry_id)
+    if previous_runtime:
+        domain_data["panel_tokens"].pop(
+            previous_runtime.get("panel_token"),
+            None,
+        )
     domain_data["entries"][entry.entry_id] = runtime
     domain_data["panel_tokens"][runtime["panel_token"]] = runtime
 
-    if domain_data.get("test_resource_store") is None:
-        await load_test_resources(hass, domain_data)
-    await runtime["coordinator"].async_config_entry_first_refresh()
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    await assign_test_sensor_areas(hass, domain_data)
-    await publish_entity_catalog(hass, runtime, source="ha_startup_scan")
+    try:
+        if domain_data.get("test_resource_store") is None:
+            await load_test_resources(hass, domain_data)
+        await runtime["coordinator"].async_config_entry_first_refresh()
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        await assign_test_sensor_areas(hass, domain_data)
+        await publish_entity_catalog(hass, runtime, source="ha_startup_scan")
+    except BaseException:
+        if domain_data["entries"].get(entry.entry_id) is runtime:
+            domain_data["entries"].pop(entry.entry_id, None)
+        domain_data["panel_tokens"].pop(runtime["panel_token"], None)
+        raise
     try:
         await sync_real_sensor_selection(runtime)
     except Exception as err:  # noqa: BLE001

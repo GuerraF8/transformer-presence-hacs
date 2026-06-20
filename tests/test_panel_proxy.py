@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import aiohttp
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -12,6 +14,7 @@ from custom_components.inferencia_presencia.panel_proxy import (
     proxy_panel_url,
     validate_proxy_path,
 )
+from custom_components.inferencia_presencia.views import register_status_views
 
 
 def runtime_for(url: str, session=None, panel_url: str = "") -> dict:
@@ -20,6 +23,47 @@ def runtime_for(url: str, session=None, panel_url: str = "") -> dict:
         "panel_base_url": panel_url,
         "http_session": session,
     }
+
+
+class FakeHttp:
+    def __init__(self) -> None:
+        self.urls: set[str] = set()
+        self.registered: list[str] = []
+        self.app = SimpleNamespace(router=self)
+
+    def routes(self):
+        return [
+            SimpleNamespace(
+                resource=SimpleNamespace(
+                    canonical=url.replace("{path:.*}", "{path}")
+                )
+            )
+            for url in self.urls
+        ]
+
+    def register_view(self, view) -> None:
+        if view.url in self.urls:
+            raise RuntimeError(f"{view.url} already has OPTIONS handler")
+        self.urls.add(view.url)
+        self.registered.append(view.url)
+
+
+def test_status_views_are_idempotent_after_runtime_reload() -> None:
+    http = FakeHttp()
+    hass = SimpleNamespace(http=http)
+    domain_data = {
+        "entries": {},
+        "status_view_registered": False,
+    }
+
+    register_status_views(hass, domain_data)
+    assert len(http.registered) == 3
+    assert domain_data["status_view_registered"] is True
+
+    domain_data["status_view_registered"] = False
+    register_status_views(hass, domain_data)
+    assert len(http.registered) == 3
+    assert domain_data["status_view_registered"] is True
 
 
 def test_panel_url_selection_and_query_preservation() -> None:
